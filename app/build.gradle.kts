@@ -10,11 +10,12 @@ plugins {
 }
 
 android {
-  namespace = "com.example"
+  namespace = "Sadaqat.KinzaDigitalHub.ArrowGo"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
+  buildToolsVersion = "36.0.0"
 
   defaultConfig {
-    applicationId = "com.aistudio.arrowgo.kinza"
+    applicationId = "Sadaqat.KinzaDigitalHub.ArrowGo"
     minSdk = 24
     targetSdk = 36
     versionCode = 1
@@ -25,13 +26,26 @@ android {
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
+      val keystorePath = (project.findProperty("KEYSTORE_PATH") as? String)
+        ?: System.getenv("KEYSTORE_PATH")
+        ?: "${rootDir}/my-upload-key.jks"
       val keystoreFile = file(keystorePath)
+      val storePass = (project.findProperty("KEYSTORE_PASSWORD") as? String)
+        ?: System.getenv("STORE_PASSWORD")
+        ?: System.getenv("KEYSTORE_PASSWORD")
+        ?: "android"
+      val kAlias = (project.findProperty("KEY_ALIAS") as? String)
+        ?: System.getenv("KEY_ALIAS")
+        ?: "upload"
+      val kPass = (project.findProperty("KEY_PASSWORD") as? String)
+        ?: System.getenv("KEY_PASSWORD")
+        ?: "android"
+
       if (keystoreFile.exists()) {
         storeFile = keystoreFile
-        storePassword = System.getenv("STORE_PASSWORD")
-        keyAlias = "upload"
-        keyPassword = System.getenv("KEY_PASSWORD")
+        storePassword = storePass
+        keyAlias = kAlias
+        keyPassword = kPass
       } else {
         // Fallback to debug keys so builds do not fail due to missing keystore or credentials
         storeFile = file("${rootDir}/debug.keystore")
@@ -41,10 +55,29 @@ android {
       }
     }
     create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
+      val keystorePath = (project.findProperty("KEYSTORE_PATH") as? String)
+        ?: System.getenv("KEYSTORE_PATH")
+      val storePass = (project.findProperty("KEYSTORE_PASSWORD") as? String)
+        ?: System.getenv("KEYSTORE_PASSWORD")
+        ?: "android"
+      val kAlias = (project.findProperty("KEY_ALIAS") as? String)
+        ?: System.getenv("KEY_ALIAS")
+        ?: "androiddebugkey"
+      val kPass = (project.findProperty("KEY_PASSWORD") as? String)
+        ?: System.getenv("KEY_PASSWORD")
+        ?: "android"
+
+      if (keystorePath != null && file(keystorePath).exists()) {
+        storeFile = file(keystorePath)
+        storePassword = storePass
+        keyAlias = kAlias
+        keyPassword = kPass
+      } else {
+        storeFile = file("${rootDir}/debug.keystore")
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+      }
     }
   }
 
@@ -58,8 +91,8 @@ android {
     debug { signingConfig = signingConfigs.getByName("debugConfig") }
   }
   compileOptions {
-    sourceCompatibility = JavaVersion.VERSION_11
-    targetCompatibility = JavaVersion.VERSION_11
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
   }
   buildFeatures {
     compose = true
