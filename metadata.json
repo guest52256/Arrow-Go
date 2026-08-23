@@ -1,0 +1,6 @@
+{
+  "name": "Arrow Go",
+  "description": "An addictive winding-path arrow puzzle game where players clear paths and exit boards to earn rewards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
