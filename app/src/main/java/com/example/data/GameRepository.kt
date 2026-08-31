@@ -37,6 +37,9 @@ class GameRepository(
     private val _transactions = MutableStateFlow<List<WalletTransaction>>(emptyList())
     val transactions: StateFlow<List<WalletTransaction>> = _transactions.asStateFlow()
 
+    private val _levelProgressMap = MutableStateFlow<Map<Int, LevelProgress>>(emptyMap())
+    val levelProgressMap: StateFlow<Map<Int, LevelProgress>> = _levelProgressMap.asStateFlow()
+
     init {
         // Observe Room changes
         ioScope.launch {
@@ -53,6 +56,12 @@ class GameRepository(
         ioScope.launch {
             gameDao.getTransactionsFlow().collect { list ->
                 _transactions.value = list.map { it.toDomainModel() }
+            }
+        }
+
+        ioScope.launch {
+            gameDao.getLevelProgressListFlow().collect { list ->
+                _levelProgressMap.value = list.associate { it.levelNumber to it.toDomainModel() }
             }
         }
     }
@@ -383,6 +392,36 @@ class GameRepository(
             } catch (e: Exception) {
                 Log.w("GameRepository", "Firestore tx write exception skipped: ${e.message}")
             }
+        }
+    }
+
+    suspend fun recordLevelCompletion(levelNumber: Int, stars: Int, timeSeconds: Int, score: Int) {
+        val existing = _levelProgressMap.value[levelNumber]
+        val bestStars = maxOf(existing?.stars ?: 0, stars)
+        val bestTime = if ((existing?.bestTimeSeconds ?: 0) == 0) timeSeconds else minOf(existing!!.bestTimeSeconds, timeSeconds)
+        val bestScore = maxOf(existing?.highScore ?: 0, score)
+
+        val progress = LevelProgress(
+            levelNumber = levelNumber,
+            isUnlocked = true,
+            stars = bestStars,
+            bestTimeSeconds = bestTime,
+            highScore = bestScore
+        )
+        gameDao.insertLevelProgress(LevelProgressEntity.fromDomainModel(progress))
+
+        // Also unlock the next level
+        val nextLevelNumber = levelNumber + 1
+        val nextExisting = _levelProgressMap.value[nextLevelNumber]
+        if (nextExisting == null || !nextExisting.isUnlocked) {
+            val nextProgress = LevelProgress(
+                levelNumber = nextLevelNumber,
+                isUnlocked = true,
+                stars = nextExisting?.stars ?: 0,
+                bestTimeSeconds = nextExisting?.bestTimeSeconds ?: 0,
+                highScore = nextExisting?.highScore ?: 0
+            )
+            gameDao.insertLevelProgress(LevelProgressEntity.fromDomainModel(nextProgress))
         }
     }
 }

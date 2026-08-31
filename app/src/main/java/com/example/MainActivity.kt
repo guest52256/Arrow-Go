@@ -14,8 +14,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.model.GameLevel
 import com.example.data.ArrowLevels
+import com.example.model.GameLevel
 import com.example.ui.screens.*
 import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.GameViewModel
@@ -33,13 +33,25 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val userProfile by gameViewModel.userProfile.collectAsStateWithLifecycle()
                 val transactions by gameViewModel.transactions.collectAsStateWithLifecycle()
+                val levelProgressMap by gameViewModel.levelProgressMap.collectAsStateWithLifecycle()
                 val coroutineScope = rememberCoroutineScope()
 
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     NavHost(
                         navController = navController,
-                        startDestination = "menu"
+                        startDestination = "splash"
                     ) {
+                        // 0. Startup Splash Screen Route
+                        composable("splash") {
+                            SplashScreen(
+                                onSplashFinished = {
+                                    navController.navigate("menu") {
+                                        popUpTo("splash") { inclusive = true }
+                                    }
+                                }
+                            )
+                        }
+
                         // 1. Main Menu Screen Route
                         composable("menu") {
                             MainMenuScreen(
@@ -101,6 +113,7 @@ class MainActivity : ComponentActivity() {
                         composable("levels") {
                             LevelsScreen(
                                 highestLevelUnlocked = userProfile?.highestLevel ?: 1,
+                                levelProgressMap = levelProgressMap,
                                 onLevelSelected = { selectedLevel ->
                                     gameViewModel.loadLevel(selectedLevel)
                                     navController.navigate("play")
@@ -135,13 +148,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onWithdrawRequest = { amount ->
-                                    var result: Result<String>? = null
-                                    coroutineScope.launch {
-                                        result = gameViewModel.repository.requestWithdrawal(amount)
-                                    }.run {
-                                        // Block slightly or return simulated result
-                                        Result.success("Submitted $amount Coins cash-out successfully!")
-                                    }
+                                    gameViewModel.repository.requestWithdrawal(amount)
                                 },
                                 onBack = {
                                     navController.popBackStack()

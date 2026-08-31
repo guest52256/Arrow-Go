@@ -1,6 +1,6 @@
 {
-  "name": "Arrow Go",
-  "description": "An addictive winding-path arrow puzzle game where players clear paths and exit boards to earn rewards.",
+  "name": "Arrows Go- Puzzle & Brain Challenge",
+  "description": "Arrows Go is a 3D-styled puzzle and brain challenge game with winding paths, directional arrows, and mathematical solvability.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

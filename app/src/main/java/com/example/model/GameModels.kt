@@ -94,3 +94,51 @@ data class MembershipPlan(
     val dailyReviveLimit: String,
     val dailyShuffleLimit: String
 )
+
+data class ScorePopup(
+    val id: Long = System.nanoTime(),
+    val text: String,
+    val gridX: Float,
+    val gridY: Float,
+    val colorHex: Long = 0xFFFBBF24
+)
+
+data class BurstParticle(
+    val id: Long = System.nanoTime(),
+    val x: Float,
+    val y: Float,
+    val vx: Float,
+    val vy: Float,
+    val colorHex: Long,
+    val size: Float,
+    val alpha: Float = 1f
+)
+
+data class FlyingToken(
+    val id: Long = System.nanoTime(),
+    val isPositive: Boolean,
+    val startX: Float,
+    val startY: Float,
+    val endX: Float,
+    val endY: Float,
+    val text: String,
+    val emoji: String = if (isPositive) "🪙" else "😡",
+    val progress: Float = 0f
+)
+
+data class LevelProgress(
+    val levelNumber: Int,
+    val isUnlocked: Boolean = false,
+    val stars: Int = 0,
+    val bestTimeSeconds: Int = 0,
+    val highScore: Int = 0
+)
+
+enum class ColorPaletteTheme(val displayName: String) {
+    NEON_GLOW("Neon Glow"),
+    CANDY_PASTEL("Candy Pastel"),
+    RETRO_ARCADE("Retro Arcade"),
+    CYBER_PUNK("Cyberpunk"),
+    CLASSIC_CLEAN("Classic Clean")
+}
+

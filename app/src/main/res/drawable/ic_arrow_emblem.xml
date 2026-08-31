@@ -1,0 +1,30 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer Glow Circle -->
+    <path
+        android:fillColor="#1E3A8A"
+        android:pathData="M54,54m-42,0a42,42 0,1 1,84 0a42,42 0,1 1,-84 0" />
+    <path
+        android:fillColor="#3B82F6"
+        android:pathData="M54,54m-34,0a34,34 0,1 1,68 0a34,34 0,1 1,-68 0" />
+    <!-- Dynamic Arrows -->
+    <!-- Up Arrow -->
+    <path
+        android:fillColor="#FBBF24"
+        android:pathData="M54,26 L64,40 L58,40 L58,50 L50,50 L50,40 L44,40 Z" />
+    <!-- Right Arrow -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M82,54 L68,64 L68,58 L58,58 L58,50 L68,50 L68,44 Z" />
+    <!-- Down Arrow -->
+    <path
+        android:fillColor="#10B981"
+        android:pathData="M54,82 L44,68 L50,68 L50,58 L58,58 L58,68 L64,68 Z" />
+    <!-- Left Arrow -->
+    <path
+        android:fillColor="#F43F5E"
+        android:pathData="M26,54 L40,44 L40,50 L50,50 L50,58 L40,58 L40,64 Z" />
+</vector>

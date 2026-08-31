@@ -89,6 +89,37 @@ data class WalletTransactionEntity(
     }
 }
 
+@Entity(tableName = "level_progress")
+data class LevelProgressEntity(
+    @PrimaryKey val levelNumber: Int,
+    val isUnlocked: Boolean,
+    val stars: Int,
+    val bestTimeSeconds: Int,
+    val highScore: Int
+) {
+    fun toDomainModel(): LevelProgress {
+        return LevelProgress(
+            levelNumber = levelNumber,
+            isUnlocked = isUnlocked,
+            stars = stars,
+            bestTimeSeconds = bestTimeSeconds,
+            highScore = highScore
+        )
+    }
+
+    companion object {
+        fun fromDomainModel(progress: LevelProgress): LevelProgressEntity {
+            return LevelProgressEntity(
+                levelNumber = progress.levelNumber,
+                isUnlocked = progress.isUnlocked,
+                stars = progress.stars,
+                bestTimeSeconds = progress.bestTimeSeconds,
+                highScore = progress.highScore
+            )
+        }
+    }
+}
+
 @Dao
 interface GameDao {
     @Query("SELECT * FROM user_profile LIMIT 1")
@@ -111,9 +142,18 @@ interface GameDao {
 
     @Query("DELETE FROM wallet_transactions")
     suspend fun clearTransactions()
+
+    @Query("SELECT * FROM level_progress")
+    fun getLevelProgressListFlow(): Flow<List<LevelProgressEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLevelProgress(progress: LevelProgressEntity)
+
+    @Query("DELETE FROM level_progress")
+    suspend fun clearLevelProgress()
 }
 
-@Database(entities = [UserProfileEntity::class, WalletTransactionEntity::class], version = 1, exportSchema = false)
+@Database(entities = [UserProfileEntity::class, WalletTransactionEntity::class, LevelProgressEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun gameDao(): GameDao
 }

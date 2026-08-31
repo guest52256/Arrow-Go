@@ -1,17 +1,19 @@
 package com.example.viewmodel
 
 import android.app.Application
+import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.*
 import com.example.model.*
+import com.example.util.SoundManager
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Stack
 
 class GameViewModel(application: Application) : AndroidViewModel(application) {
-    // We instantiate Room and Repository here simply.
     private val database = androidx.room.Room.databaseBuilder(
         application,
         AppDatabase::class.java,
@@ -19,10 +21,12 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     ).fallbackToDestructiveMigration().build()
     
     val repository = GameRepository(application, database.gameDao())
+    val soundManager = SoundManager.getInstance(application)
     
     // UI state streams
     val userProfile = repository.currentUserProfile
     val transactions = repository.transactions
+    val levelProgressMap = repository.levelProgressMap
 
     // Current Game Level state
     private val _currentLevel = MutableStateFlow<GameLevel>(ArrowLevels.levels[0])
@@ -43,10 +47,43 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private val _moves = MutableStateFlow(0)
     val moves: StateFlow<Int> = _moves.asStateFlow()
 
+    // 60-Second Countdown Timer
+    private val _timerSeconds = MutableStateFlow(60)
+    val timerSeconds: StateFlow<Int> = _timerSeconds.asStateFlow()
+    private var timerJob: Job? = null
+
+    // Golden Shiny Points Score System
+    private val _goldenScore = MutableStateFlow(0)
+    val goldenScore: StateFlow<Int> = _goldenScore.asStateFlow()
+
+    // Animated Flying Token Trajectories
+    private val _flyingTokens = MutableStateFlow<List<FlyingToken>>(emptyList())
+    val flyingTokens: StateFlow<List<FlyingToken>> = _flyingTokens.asStateFlow()
+
+    // Magnifier Inspection Tool
+    private val _isMagnifierActive = MutableStateFlow(false)
+    val isMagnifierActive: StateFlow<Boolean> = _isMagnifierActive.asStateFlow()
+
+    private val _magnifierPosition = MutableStateFlow(Offset(0.5f, 0.5f))
+    val magnifierPosition: StateFlow<Offset> = _magnifierPosition.asStateFlow()
+
+    // Color Palette Switcher
+    private val _paletteTheme = MutableStateFlow(ColorPaletteTheme.NEON_GLOW)
+    val paletteTheme: StateFlow<ColorPaletteTheme> = _paletteTheme.asStateFlow()
+
+    // Sound & Haptics settings
+    var isSoundEnabled: Boolean
+        get() = soundManager.isSoundEnabled
+        set(value) { soundManager.isSoundEnabled = value }
+
+    var isHapticsEnabled: Boolean
+        get() = soundManager.isHapticsEnabled
+        set(value) { soundManager.isHapticsEnabled = value }
+
     // Undo Stack
     private val undoStack = Stack<List<Arrow>>()
 
-    // Feature Daily Quotas (Free, Starter, Pro, Ultra)
+    // Feature Daily Quotas
     private val _dailyHintsUsed = MutableStateFlow(0)
     val dailyHintsUsed: StateFlow<Int> = _dailyHintsUsed.asStateFlow()
 
@@ -63,11 +100,40 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private val _gameState = MutableStateFlow<GameState>(GameState.PLAYING)
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
 
+    private val _gameOverReason = MutableStateFlow(GameOverReason.OUT_OF_LIVES)
+    val gameOverReason: StateFlow<GameOverReason> = _gameOverReason.asStateFlow()
+
+    private val _blockedArrowId = MutableStateFlow<String?>(null)
+    val blockedArrowId: StateFlow<String?> = _blockedArrowId.asStateFlow()
+
+    private val _blockedCollisionPoint = MutableStateFlow<Point?>(null)
+    val blockedCollisionPoint: StateFlow<Point?> = _blockedCollisionPoint.asStateFlow()
+
+    private val _scorePopups = MutableStateFlow<List<ScorePopup>>(emptyList())
+    val scorePopups: StateFlow<List<ScorePopup>> = _scorePopups.asStateFlow()
+
+    private val _comboStreak = MutableStateFlow(0)
+    val comboStreak: StateFlow<Int> = _comboStreak.asStateFlow()
+
     private val _lastClearedReward = MutableStateFlow<LevelRewardResult?>(null)
     val lastClearedReward: StateFlow<LevelRewardResult?> = _lastClearedReward.asStateFlow()
 
+    // Completion metrics
+    private val _starsEarned = MutableStateFlow(3)
+    val starsEarned: StateFlow<Int> = _starsEarned.asStateFlow()
+
+    private val _completionTimeSeconds = MutableStateFlow(0)
+    val completionTimeSeconds: StateFlow<Int> = _completionTimeSeconds.asStateFlow()
+
+    private val _speedBonusSeconds = MutableStateFlow(0)
+    val speedBonusSeconds: StateFlow<Int> = _speedBonusSeconds.asStateFlow()
+
     enum class GameState {
         PLAYING, LEVEL_COMPLETE, GAME_OVER
+    }
+
+    enum class GameOverReason {
+        OUT_OF_LIVES, TIME_UP
     }
 
     data class LevelRewardResult(
@@ -78,7 +144,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     init {
-        // Automatically load current level from user profile
         viewModelScope.launch {
             userProfile.collect { profile ->
                 if (profile != null) {
@@ -94,19 +159,60 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadLevel(level: GameLevel) {
-        _currentLevel.value = level
-        _activeArrows.value = level.arrows.map { it.copy() }
-        _totalArrowsCount.value = level.arrows.size
-        _remainingArrowsCount.value = level.arrows.size
+        val sanitizedArrows = level.arrows.map { ProceduralLevelGenerator.sanitizeArrowPath(it.copy()) }
+        val sanitizedLevel = level.copy(arrows = sanitizedArrows)
+        _currentLevel.value = sanitizedLevel
+        _activeArrows.value = sanitizedArrows
+        _totalArrowsCount.value = sanitizedArrows.size
+        _remainingArrowsCount.value = sanitizedArrows.size
         _hearts.value = level.initialHearts
         _moves.value = 0
+        _goldenScore.value = 0
+        _flyingTokens.value = emptyList()
+        _isMagnifierActive.value = false
         undoStack.clear()
         _gameState.value = GameState.PLAYING
         _lastClearedReward.value = null
+        _timerSeconds.value = 60
+        startTimer()
     }
 
     fun resetLevel() {
         loadLevel(_currentLevel.value)
+    }
+
+    private fun startTimer() {
+        timerJob?.cancel()
+        timerJob = viewModelScope.launch {
+            while (_timerSeconds.value > 0 && _gameState.value == GameState.PLAYING) {
+                delay(1000)
+                if (_gameState.value == GameState.PLAYING) {
+                    _timerSeconds.value -= 1
+                    if (_timerSeconds.value <= 0) {
+                        // Timer expired
+                        soundManager.playErrorBuzzer()
+                        _gameOverReason.value = GameOverReason.TIME_UP
+                        _gameState.value = GameState.GAME_OVER
+                    }
+                }
+            }
+        }
+    }
+
+    fun toggleMagnifier() {
+        _isMagnifierActive.value = !_isMagnifierActive.value
+        soundManager.playClick()
+    }
+
+    fun updateMagnifierPosition(normalizedOffset: Offset) {
+        _magnifierPosition.value = normalizedOffset
+    }
+
+    fun cyclePaletteTheme() {
+        val allThemes = ColorPaletteTheme.values()
+        val nextIndex = (allThemes.indexOf(_paletteTheme.value) + 1) % allThemes.size
+        _paletteTheme.value = allThemes[nextIndex]
+        soundManager.playClick()
     }
 
     // Expand path points into individual occupied grid coordinates
@@ -142,7 +248,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val gridWidth = _currentLevel.value.gridWidth
         val gridHeight = _currentLevel.value.gridHeight
         
-        // Calculate the ray points in the exit direction
         val rayPoints = mutableListOf<Point>()
         when (arrow.direction) {
             ArrowDirection.UP -> {
@@ -167,12 +272,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Get all occupied grid coordinates of OTHER arrows and obstacles
         val otherArrows = allArrows.filter { it.id != arrow.id }
         val occupiedByOthers = otherArrows.flatMap { getOccupiedPointsForArrow(it) }.toSet()
         val occupiedByObstacles = _currentLevel.value.obstacles.map { Point(it.x, it.y) }.toSet()
 
-        // If any point on our exit ray is occupied, we are blocked
         for (rayPt in rayPoints) {
             if (occupiedByOthers.contains(rayPt) || occupiedByObstacles.contains(rayPt)) {
                 return false
@@ -181,22 +284,76 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
-    fun handleArrowTap(arrowId: String) {
+    fun getFirstCollisionPoint(arrow: Arrow, allArrows: List<Arrow>): Point? {
+        if (arrow.pathPoints.isEmpty()) return null
+        val head = arrow.pathPoints.last()
+        val gridWidth = _currentLevel.value.gridWidth
+        val gridHeight = _currentLevel.value.gridHeight
+
+        val rayPoints = mutableListOf<Point>()
+        when (arrow.direction) {
+            ArrowDirection.UP -> for (y in head.y - 1 downTo 0) rayPoints.add(Point(head.x, y))
+            ArrowDirection.DOWN -> for (y in head.y + 1..gridHeight) rayPoints.add(Point(head.x, y))
+            ArrowDirection.LEFT -> for (x in head.x - 1 downTo 0) rayPoints.add(Point(x, head.y))
+            ArrowDirection.RIGHT -> for (x in head.x + 1..gridWidth) rayPoints.add(Point(x, head.y))
+        }
+
+        val otherArrows = allArrows.filter { it.id != arrow.id }
+        val occupiedByOthers = otherArrows.flatMap { getOccupiedPointsForArrow(it) }.toSet()
+        val occupiedByObstacles = _currentLevel.value.obstacles.map { Point(it.x, it.y) }.toSet()
+
+        for (rayPt in rayPoints) {
+            if (occupiedByOthers.contains(rayPt) || occupiedByObstacles.contains(rayPt)) {
+                return rayPt
+            }
+        }
+        return null
+    }
+
+    fun handleArrowTap(arrowId: String, screenTouchX: Float = 0.5f, screenTouchY: Float = 0.5f) {
         if (_gameState.value != GameState.PLAYING) return
         
         val arrows = _activeArrows.value
         val arrow = arrows.find { it.id == arrowId } ?: return
         
-        if (arrow.isSliding) return // Already sliding
-
-        // Push current state to undo stack before moving
-        val stateCopy = arrows.map { it.copy(isHinted = false) }
+        if (arrow.isSliding) return
 
         if (canArrowExit(arrow, arrows)) {
-            // Success move
+            // Correct Move
+            soundManager.playWhoosh()
+            soundManager.playCoinChime()
+
+            val stateCopy = arrows.map { it.copy(isHinted = false) }
             undoStack.push(stateCopy)
             _moves.value += 1
+            _comboStreak.value += 1
+            _goldenScore.value += 10
             
+            val combo = _comboStreak.value
+            val popupText = if (combo > 1) "COMBO x$combo! +${10 * combo}" else "+10"
+            val headPt = arrow.pathPoints.lastOrNull() ?: Point(0, 0)
+            
+            // Score popup tag
+            val newPopup = ScorePopup(
+                text = popupText,
+                gridX = headPt.x.toFloat(),
+                gridY = headPt.y.toFloat()
+            )
+            _scorePopups.value = _scorePopups.value + newPopup
+
+            // Spawn Flying Golden Coin Trajectory
+            spawnFlyingToken(
+                isPositive = true,
+                startX = screenTouchX,
+                startY = screenTouchY,
+                text = "+10"
+            )
+
+            viewModelScope.launch {
+                delay(900)
+                _scorePopups.value = _scorePopups.value.filter { it.id != newPopup.id }
+            }
+
             // Start sliding animation
             _activeArrows.value = arrows.map {
                 if (it.id == arrowId) {
@@ -206,12 +363,13 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            // Animate slide in background
+            // Animate slide
             viewModelScope.launch {
                 var progress = 0f
                 while (progress < 1.0f) {
-                    delay(30)
-                    progress += 0.15f
+                    delay(16)
+                    val step = (0.07f + progress * 0.14f).coerceAtLeast(0.06f)
+                    progress += step
                     _activeArrows.value = _activeArrows.value.map {
                         if (it.id == arrowId) {
                             it.copy(slideProgress = minOf(progress, 1f))
@@ -220,31 +378,94 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 }
-                // Remove the arrow from the board
                 val remaining = _activeArrows.value.filter { it.id != arrowId }
                 _activeArrows.value = remaining
                 _remainingArrowsCount.value = remaining.size
 
-                // Check for Level Completion
                 if (remaining.isEmpty()) {
                     triggerLevelComplete()
                 }
             }
         } else {
-            // Blocked move - deduct Heart/Life
+            // Blocked Move / Error
+            soundManager.playErrorBuzzer()
+            _comboStreak.value = 0
             _hearts.value = maxOf(0, _hearts.value - 1)
+            _goldenScore.value = maxOf(0, _goldenScore.value - 10)
             
-            // Subtle pulse error visual feedback can go here
+            // Spawn Flying Red Angry Emoji
+            spawnFlyingToken(
+                isPositive = false,
+                startX = screenTouchX,
+                startY = screenTouchY,
+                text = "-10"
+            )
+
+            val collision = getFirstCollisionPoint(arrow, arrows)
+            _blockedArrowId.value = arrowId
+            _blockedCollisionPoint.value = collision
+
+            viewModelScope.launch {
+                delay(400)
+                if (_blockedArrowId.value == arrowId) {
+                    _blockedArrowId.value = null
+                    _blockedCollisionPoint.value = null
+                }
+            }
+
             if (_hearts.value <= 0) {
+                timerJob?.cancel()
+                _gameOverReason.value = GameOverReason.OUT_OF_LIVES
                 _gameState.value = GameState.GAME_OVER
             }
         }
     }
 
+    private fun spawnFlyingToken(isPositive: Boolean, startX: Float, startY: Float, text: String) {
+        val token = FlyingToken(
+            isPositive = isPositive,
+            startX = startX,
+            startY = startY,
+            endX = 0.85f, // Top-right Score Badge location
+            endY = 0.06f,
+            text = text,
+            emoji = if (isPositive) "🪙" else "😡",
+            progress = 0f
+        )
+        _flyingTokens.value = _flyingTokens.value + token
+
+        viewModelScope.launch {
+            var p = 0f
+            while (p < 1f) {
+                delay(16)
+                p += 0.05f
+                _flyingTokens.value = _flyingTokens.value.map {
+                    if (it.id == token.id) it.copy(progress = minOf(p, 1f)) else it
+                }
+            }
+            delay(50)
+            _flyingTokens.value = _flyingTokens.value.filter { it.id != token.id }
+        }
+    }
+
     private suspend fun triggerLevelComplete() {
+        timerJob?.cancel()
+        soundManager.playVictoryFanfare()
         _gameState.value = GameState.LEVEL_COMPLETE
         
-        // Calculate level reward based on membership plan
+        val timeElapsed = (60 - _timerSeconds.value).coerceAtLeast(1)
+        val speedBonus = (60 - timeElapsed).coerceAtLeast(0)
+        _completionTimeSeconds.value = timeElapsed
+        _speedBonusSeconds.value = speedBonus
+
+        // Star calculation
+        val stars = when {
+            _hearts.value >= 3 && timeElapsed <= 35 -> 3
+            _hearts.value >= 2 && timeElapsed <= 50 -> 2
+            else -> 1
+        }
+        _starsEarned.value = stars
+
         val profile = userProfile.value ?: return
         val level = _currentLevel.value
         
@@ -272,8 +493,26 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             gameCoins = gameCoins
         )
         
-        // Save to repository (completes and updates db)
+        // Save to repository (completes profile and persists level progress in Room)
         repository.completeLevel(level)
+        repository.recordLevelCompletion(
+            levelNumber = level.levelNumber,
+            stars = stars,
+            timeSeconds = timeElapsed,
+            score = _goldenScore.value
+        )
+    }
+
+    fun continueWithHearts() {
+        _hearts.value = 3
+        _gameState.value = GameState.PLAYING
+        startTimer()
+    }
+
+    fun continueWithTime() {
+        _timerSeconds.value = 30
+        _gameState.value = GameState.PLAYING
+        startTimer()
     }
 
     fun triggerUndo() {
@@ -302,6 +541,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun restorePreviousState() {
         if (undoStack.isNotEmpty()) {
+            soundManager.playClick()
             val previousArrows = undoStack.pop()
             _activeArrows.value = previousArrows
             _remainingArrowsCount.value = previousArrows.size
@@ -332,8 +572,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun showHint() {
+        soundManager.playHintChime()
         val arrows = _activeArrows.value
-        // Find first arrow with exit path clear
         val clearArrow = arrows.find { canArrowExit(it, arrows) }
         if (clearArrow != null) {
             _activeArrows.value = arrows.map {
@@ -369,7 +609,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun shuffleLayering() {
-        // Shuffle simply rearranges the list layer rendering/priority, which solves visual block order
+        soundManager.playClick()
         _activeArrows.value = _activeArrows.value.shuffled()
     }
 
@@ -377,7 +617,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.claimAdReward("Revive Completed")
             _hearts.value = _currentLevel.value.initialHearts
+            _timerSeconds.value = 60
             _gameState.value = GameState.PLAYING
+            startTimer()
         }
     }
 

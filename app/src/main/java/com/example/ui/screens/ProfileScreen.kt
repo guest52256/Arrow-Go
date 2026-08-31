@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.*
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -33,13 +34,14 @@ fun ProfileScreen(
     transactions: List<WalletTransaction>,
     onLinkGoogle: (email: String, name: String) -> Unit,
     onLogOut: () -> Unit,
-    onWithdrawRequest: (Int) -> Result<String>,
+    onWithdrawRequest: suspend (Int) -> Result<String>,
     onBack: () -> Unit
 ) {
     var showCashOutDialog by remember { mutableStateOf(false) }
     var cashOutAmountString by remember { mutableStateOf("") }
     var cashOutError by remember { mutableStateOf<String?>(null) }
     var cashOutSuccess by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     val bgGradient = Brush.verticalGradient(
         colors = listOf(Color(0xFF0F172A), Color(0xFF1E293B))
@@ -349,13 +351,15 @@ fun ProfileScreen(
                                 cashOutError = "Please enter a valid numeric value."
                                 return@Button
                             }
-                            val res = onWithdrawRequest(amount)
-                            if (res.isSuccess) {
-                                cashOutSuccess = res.getOrNull()
-                                cashOutError = null
-                            } else {
-                                cashOutError = res.exceptionOrNull()?.message ?: "Transaction failed."
-                                cashOutSuccess = null
+                            coroutineScope.launch {
+                                val res = onWithdrawRequest(amount)
+                                if (res.isSuccess) {
+                                    cashOutSuccess = res.getOrNull()
+                                    cashOutError = null
+                                } else {
+                                    cashOutError = res.exceptionOrNull()?.message ?: "Transaction failed."
+                                    cashOutSuccess = null
+                                }
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
